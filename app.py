@@ -14,7 +14,7 @@ st.title("Electric Vehicle Adoption Rate Analysis by State in India")
 # ── Load Data ──────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    df = pd.read_csv("Electric Vehicle Sales by State in India.csv")
+    df = pd.read_csv("EV_Dataset.csv")
     df.columns = df.columns.str.strip()
     return df
 
