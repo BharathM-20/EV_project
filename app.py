@@ -198,7 +198,7 @@ India EV Sales Dataset Summary:
     if st.button("Ask Gemini") and api_key and question:
         try:
             genai.configure(api_key=api_key)
-            gemini = genai.GenerativeModel("gemini-2.0-flash")
+            gemini = genai.GenerativeModel("gemini-1.5-flash-8b")
 
 
             prompt = f"""You are a data analyst specializing in India's electric vehicle market.
