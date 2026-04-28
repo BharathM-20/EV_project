@@ -3,4 +3,4 @@ pandas
 matplotlib
 scikit-learn
 numpy
-google-generativeai
+groq
