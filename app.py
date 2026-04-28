@@ -6,7 +6,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 import numpy as np
-import google.generativeai as genai
+from groq import Groq
 
 st.set_page_config(page_title="India EV Adoption Analysis", layout="wide")
 st.title("Electric Vehicle Adoption Rate Analysis by State in India")
@@ -20,8 +20,8 @@ def load_data():
 
 df = load_data()
 
-# ── Quick debug (remove once columns confirmed) ────────────────────────────────
-with st.expander(" Raw Data Preview"):
+# ── Raw Data Preview ───────────────────────────────────────────────────────────
+with st.expander("Raw Data Preview"):
     st.write("Columns:", df.columns.tolist())
     st.dataframe(df.head(10))
 
@@ -32,7 +32,7 @@ col_cat   = next((c for c in df.columns if "categor" in c.lower()), None)
 col_vtype = next((c for c in df.columns if "type"    in c.lower()), None)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs([" EDA", " ML Model", " Ask AI Analyst"])
+tab1, tab2, tab3 = st.tabs(["📊 EDA", "🤖 ML Model", "💬 Ask AI Analyst"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -115,7 +115,7 @@ with tab2:
     if col_cat:   feature_cols.append(col_cat)
     if col_vtype: feature_cols.append(col_vtype)
 
-    model_df = df[feature_cols + [col_sales]].dropna()
+    model_df     = df[feature_cols + [col_sales]].dropna()
     model_df_enc = pd.get_dummies(model_df, columns=feature_cols)
 
     X = model_df_enc.drop(col_sales, axis=1)
@@ -156,24 +156,24 @@ with tab2:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — GEMINI AI ANALYST
+# TAB 3 — GROQ AI ANALYST
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.header("💬 Ask the AI Analyst")
-    st.write("Ask anything about India's EV adoption — powered by Gemini.")
+    st.write("Ask anything about India's EV adoption — powered by Groq (Llama 3).")
 
-    # Build data context from actual numbers
-    total_sales   = int(df[col_sales].sum())
+    # Build data context from actual dataset numbers
+    total_sales    = int(df[col_sales].sum())
     top_state_name = df.groupby(col_state)[col_sales].sum().idxmax()
     top_state_val  = int(df.groupby(col_state)[col_sales].sum().max())
-    num_states    = df[col_state].nunique()
-    avg_per_state = int(df.groupby(col_state)[col_sales].sum().mean())
-    top5_list     = ", ".join(df.groupby(col_state)[col_sales].sum()
-                               .sort_values(ascending=False).head(5).index.tolist())
+    num_states     = df[col_state].nunique()
+    avg_per_state  = int(df.groupby(col_state)[col_sales].sum().mean())
+    top5_list      = ", ".join(df.groupby(col_state)[col_sales].sum()
+                                .sort_values(ascending=False).head(5).index.tolist())
 
     cat_text = ""
     if col_cat:
-        c_data = df.groupby(col_cat)[col_sales].sum().sort_values(ascending=False)
+        c_data   = df.groupby(col_cat)[col_sales].sum().sort_values(ascending=False)
         cat_text = "\n".join([f"  - {k}: {v:,}" for k, v in c_data.items()])
 
     ka_total = int(df[df[col_state].str.contains("Karnataka", case=False)][col_sales].sum())
@@ -191,15 +191,19 @@ India EV Sales Dataset Summary:
 - Two-wheelers dominate EV sales in India
 """
 
-    api_key = st.secrets.get("GEMINI_API_KEY", "") or st.text_input("Gemini API Key", type="password", help="Get free key at aistudio.google.com")
-    question = st.text_input("Your question",
-                              placeholder="Which state has the fastest EV adoption?")
+    api_key  = st.text_input(
+        "Groq API Key",
+        type="password",
+        help="Free at console.groq.com — no credit card needed"
+    )
+    question = st.text_input(
+        "Your question",
+        placeholder="Which state has the highest EV adoption and why?"
+    )
 
-    if st.button("Ask Gemini") and api_key and question:
+    if st.button("Ask AI") and api_key and question:
         try:
-            genai.configure(api_key=api_key)
-            gemini = genai.GenerativeModel("gemini-1.5-flash-8b")
-
+            client = Groq(api_key=api_key)
 
             prompt = f"""You are a data analyst specializing in India's electric vehicle market.
 Here is a summary of the dataset you are working with:
@@ -212,8 +216,14 @@ If asked about EV policy or infrastructure in India, you may add brief general c
 Question: {question}"""
 
             with st.spinner("Thinking..."):
-                response = gemini.generate_content(prompt)
-                st.success(response.text)
+                response = client.chat.completions.create(
+                    model="llama3-8b-8192",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                st.success(response.choices[0].message.content)
 
         except Exception as e:
             st.error(f"Error: {e}")
+
+    elif not api_key:
+        st.info("👆 Enter your free Groq API key above to get started.")
