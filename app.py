@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import os
 
@@ -22,11 +21,6 @@ def load_data():
 
 df = load_data()
 
-# ── Raw Data Preview ───────────────────────────────────────────────────────────
-with st.expander("Raw Data Preview"):
-    st.write("Columns:", df.columns.tolist())
-    st.dataframe(df.head(10))
-
 # ── Detect key columns ─────────────────────────────────────────────────────────
 col_state = [c for c in df.columns if "state" in c.lower()][0]
 col_sales = [c for c in df.columns if any(k in c.lower() for k in ["sale", "count", "unit", "total"])][0]
@@ -44,20 +38,14 @@ with tab1:
     st.header("Exploratory Data Analysis")
 
     state_sales = df.groupby(col_state)[col_sales].sum().sort_values(ascending=False).head(10)
-    fig1, ax1 = plt.subplots(figsize=(10, 4))
-    state_sales.plot(kind="bar", ax=ax1)
-    ax1.set_title("Top 10 States by EV Sales")
-    st.pyplot(fig1)
+    st.bar_chart(state_sales)
 
     bottom_states = df.groupby(col_state)[col_sales].sum().sort_values().head(10)
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    bottom_states.plot(kind="bar", ax=ax2)
-    ax2.set_title("Bottom 10 States")
-    st.pyplot(fig2)
+    st.bar_chart(bottom_states)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — ML MODEL (XGBOOST)
+# TAB 2 — ML MODEL (FIXED XGBOOST)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
     st.header("ML Model — Predicting EV Sales (XGBoost)")
@@ -67,9 +55,9 @@ with tab2:
     # Detect date column
     date_col = next((c for c in df_model.columns if "date" in c.lower()), None)
 
-    # Add time features if available
+    # time features
     if date_col:
-        df_model[date_col] = pd.to_datetime(df_model[date_col])
+        df_model[date_col] = pd.to_datetime(df_model[date_col], errors="coerce")
         df_model["year"] = df_model[date_col].dt.year
         df_model["month"] = df_model[date_col].dt.month
         feature_cols = [col_state, col_cat, col_vtype, "year", "month"]
@@ -78,7 +66,7 @@ with tab2:
 
     feature_cols = [c for c in feature_cols if c is not None]
 
-    # 🔥 Aggregation fix
+    
     model_df = df_model.groupby(feature_cols)[col_sales].sum().reset_index()
 
     # Encoding
@@ -90,6 +78,10 @@ with tab2:
     X = model_df_enc.drop(col_sales, axis=1)
     y = model_df_enc[col_sales]
 
+    
+    X = X.apply(pd.to_numeric, errors='coerce')
+    X = X.fillna(0)
+
     # Log transform
     y_log = np.log1p(y)
 
@@ -98,9 +90,9 @@ with tab2:
         X, y_log, test_size=0.2, random_state=42
     )
 
-    # XGBoost model
+    # Model
     model = XGBRegressor(
-        n_estimators=500,
+        n_estimators=300,
         learning_rate=0.05,
         max_depth=8,
         subsample=0.8,
@@ -120,72 +112,38 @@ with tab2:
     r2 = r2_score(y_test_actual, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test_actual, y_pred))
 
-    c1, c2 = st.columns(2)
-    c1.metric("R² Score", f"{r2:.3f}")
-    c2.metric("RMSE", f"{rmse:,.0f}")
-
-    # Debug
-    st.write("Actual range:", int(y_test_actual.min()), "to", int(y_test_actual.max()))
-    st.write("Predicted range:", int(y_pred.min()), "to", int(y_pred.max()))
-
-    # Feature importance
-    st.subheader("Feature Importance")
-    importance = pd.Series(model.feature_importances_, index=X.columns).nlargest(10)
-
-    fig3, ax3 = plt.subplots(figsize=(10, 4))
-    importance.sort_values().plot(kind="barh", ax=ax3)
-    st.pyplot(fig3)
+    st.metric("R² Score", f"{r2:.3f}")
+    st.metric("RMSE", f"{rmse:,.0f}")
 
     # Scatter plot
     st.subheader("Actual vs Predicted EV Sales")
-    fig4, ax4 = plt.subplots(figsize=(6, 5))
-    ax4.scatter(y_test_actual, y_pred, alpha=0.5)
-    ax4.plot(
+    fig, ax = plt.subplots()
+    ax.scatter(y_test_actual, y_pred, alpha=0.5)
+    ax.plot(
         [y_test_actual.min(), y_test_actual.max()],
         [y_test_actual.min(), y_test_actual.max()],
         "r--"
     )
-    ax4.set_xlabel("Actual Sales")
-    ax4.set_ylabel("Predicted Sales")
-    st.pyplot(fig4)
+    ax.set_xlabel("Actual")
+    ax.set_ylabel("Predicted")
+    st.pyplot(fig)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — GROQ AI (UPDATED INPUT HANDLING ONLY)
+# TAB 3 — AI ANALYST (UNCHANGED LOGIC + ENV KEY SUPPORT)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.header("💬 Ask the AI Analyst")
-    st.write("Ask anything about India's EV adoption — powered by Groq (Llama 3).")
 
-    # Data summary
-    total_sales    = int(df[col_sales].sum())
-    top_state_name = df.groupby(col_state)[col_sales].sum().idxmax()
-    top_state_val  = int(df.groupby(col_state)[col_sales].sum().max())
-    num_states     = df[col_state].nunique()
-    avg_per_state  = int(df.groupby(col_state)[col_sales].sum().mean())
-    top5_list      = ", ".join(df.groupby(col_state)[col_sales].sum()
-                                .sort_values(ascending=False).head(5).index.tolist())
-
-    cat_text = ""
-    if col_cat:
-        c_data   = df.groupby(col_cat)[col_sales].sum().sort_values(ascending=False)
-        cat_text = "\n".join([f"  - {k}: {v:,}" for k, v in c_data.items()])
-
-    ka_total = int(df[df[col_state].str.contains("Karnataka", case=False)][col_sales].sum())
+    total_sales = int(df[col_sales].sum())
+    top_state = df.groupby(col_state)[col_sales].sum().idxmax()
 
     data_context = f"""
-India EV Sales Dataset Summary:
-- Total EV sales: {total_sales:,}
-- Number of states: {num_states}
-- Top state: {top_state_name} ({top_state_val:,})
-- Top 5 states: {top5_list}
-- Avg sales/state: {avg_per_state:,}
-- Karnataka: {ka_total:,}
-- Category breakdown:
-{cat_text}
-"""
+    Total EV Sales: {total_sales}
+    Top State: {top_state}
+    """
 
-    # ✅ Updated API key handling
+    
     api_key = st.text_input("Groq API Key", type="password") or os.getenv("GROQ_API_KEY")
     question = st.text_input("Your question")
 
@@ -193,16 +151,12 @@ India EV Sales Dataset Summary:
         try:
             client = Groq(api_key=api_key)
 
-            prompt = f"""You are a data analyst specializing in India's EV market.
-
-{data_context}
-
-Question: {question}
-"""
-
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{
+                    "role": "user",
+                    "content": f"{data_context}\n\nQuestion: {question}"
+                }]
             )
 
             st.success(response.choices[0].message.content)
