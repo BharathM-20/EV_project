@@ -1,6 +1,7 @@
-	•	streamlit
-	•	pandas
-	•	matplotlib
-	•	scikit-learn
-	•	xgboost
-	•	groq
+streamlit
+pandas
+matplotlib
+scikit-learn
+xgboost
+groq
+
